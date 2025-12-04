@@ -1,24 +1,20 @@
-import logo from './logo.svg';
-import './App.css';
 
+import AdminDashboard from './pages/AdminDashboard';
+import HistoryPage from './pages/HistoryPage';
 function App() {
   return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
+    <SocketProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/rider" element={<RiderDashboard />} />
+          <Route path="/driver" element={<DriverDashboard />} />
+          <Route path="/admin" element={<AdminDashboard />} /> {/* New Route */}
+          <Route path="/history" element={<HistoryPage />} /> {/* New Route */}
+        </Routes>
+      </Router>
+    </SocketProvider>
   );
 }
 export default App;
