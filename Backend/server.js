@@ -9,19 +9,23 @@ const rideRoutes = require('./routes/rideRoutes');
 app.use('/api/auth', authRoutes);
 app.use('/api/ride', rideRoutes);
 
-const app = express();
-const server = http.createServer(app);
+    // 3.5 Driver Declines Ride (NEW CODE)
+    socket.on('decline_ride', async (data) => {
+        const { rideId, driverId } = data;
+        console.log(`Ride ${rideId} declined by driver ${driverId}`);
 
-app.use(cors());
-app.use(express.json());
+        try {
+            const ride = await Ride.findById(rideId);
+            if (ride) {
+                io.to(ride.rider.toString()).emit('ride_declined', {
+                    message: "Driver is busy. Please search again."
+                });
+                ride.status = 'cancelled'; 
+                await ride.save();
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    });
 
-connectDB();
-
-// ROUTES IMPORT
-const authRoutes = require('./routes/authRoutes');
-app.use('/api/auth', authRoutes);
-
-const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-module.exports = { server, app };
+   
