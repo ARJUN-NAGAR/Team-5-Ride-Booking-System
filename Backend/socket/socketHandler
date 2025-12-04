@@ -1,0 +1,39 @@
+const socketIo = require('socket.io');
+
+let io;
+
+const initSocket = (server) => {
+    io = socketIo(server, {
+        cors: { origin: "*" } // Allow Frontend to connect
+    });
+
+    io.on('connection', (socket) => {
+        console.log('🔌 Client Connected:', socket.id);
+
+        // 1. User joins their own personal room (Room Name = UserID)
+        socket.on('join_room', (userId) => {
+            if (userId) {
+                socket.join(userId);
+                console.log(`👤 User joined room: ${userId}`);
+            }
+        });
+
+        // 2. Driver sends live location -> Relay to Rider
+        socket.on('driver_location_update', (data) => {
+            const { riderId, lat, lng } = data;
+            if (riderId) {
+                io.to(riderId).emit('driver_moved', { lat, lng });
+            }
+        });
+
+        socket.on('disconnect', () => console.log('❌ Disconnected'));
+    });
+};
+
+// Export this function so Arjun's Controller can use it
+const getIO = () => {
+    if (!io) throw new Error("Socket not initialized!");
+    return io;
+};
+
+module.exports = { initSocket, getIO };

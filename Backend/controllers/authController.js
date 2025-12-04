@@ -1,11 +1,13 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 
+// Generate Token
 // Generate JWT Token
 const generateToken = (id) => {
     return jwt.sign({ id }, process.env.JWT_SECRET || 'secret123', { expiresIn: '30d' });
 };
 
+// Register User
 exports.registerUser = async (req, res) => {
     const { name, email, password, role, lat, lng } = req.body;
 
@@ -16,11 +18,13 @@ exports.registerUser = async (req, res) => {
         const user = await User.create({
             name,
             email,
+            password,
             password, 
             role,
             isAvailable: role === 'driver' ? true : false,
             location: {
                 type: 'Point',
+                coordinates: [parseFloat(lng) || 0, parseFloat(lat) || 0]
                 coordinates: [parseFloat(lng) || 0, parseFloat(lat) || 0] // GeoJSON: [Longitude, Latitude]
             }
         });
@@ -36,12 +40,14 @@ exports.registerUser = async (req, res) => {
     }
 };
 
+// Login User
 // @desc    Login user
 // @route   POST /api/auth/login
 exports.loginUser = async (req, res) => {
     const { email, password } = req.body;
     try {
         const user = await User.findOne({ email });
+        if (user && user.password === password) {
         if (user && user.password === password) { // Simple check for hackathon
             res.json({
                 _id: user._id,

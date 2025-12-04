@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UrbanGlide Backend Tester</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <style>
+        body { font-family: sans-serif; background: #f3f4f6; }
+        .console { font-family: monospace; font-size: 12px; height: 150px; overflow-y: scroll; background: #1f2937; color: #10b981; padding: 10px; }
+    </style>
+</head>
+<body class="p-5">
+
+    <h1 class="text-3xl font-bold text-center mb-8">🚖 Backend Logic Tester</h1>
+
+    <div class="grid grid-cols-2 gap-8">
+        
+        <div class="bg-white p-6 rounded-lg shadow-lg border-t-4 border-blue-500">
+            <h2 class="text-2xl font-bold text-blue-600 mb-4">👤 Rider Panel</h2>
+            
+            <div class="mb-4 p-4 bg-blue-50 rounded">
+                <p class="text-sm font-bold text-gray-500">Step 1: Identity</p>
+                <button onclick="registerRider()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm mt-2 hover:bg-blue-700">1. Auto-Register & Login</button>
+                <div class="mt-2 text-xs">ID: <span id="riderId" class="font-mono font-bold">Not Logged In</span></div>
+            </div>
+
+            <div class="mb-4 p-4 bg-gray-50 rounded border">
+                <p class="text-sm font-bold text-gray-500">Step 2: Action</p>
+                <div class="grid grid-cols-2 gap-2 mt-2 text-sm">
+                    <input type="text" id="pickup" value="28.61, 77.20" class="border p-1" placeholder="Pickup Lat,Lng">
+                    <input type="text" id="drop" value="28.65, 77.25" class="border p-1" placeholder="Drop Lat,Lng">
+                </div>
+                <button onclick="requestRide()" class="w-full bg-black text-white py-2 rounded mt-3 hover:bg-gray-800">2. Request Ride</button>
+            </div>
+
+            <div class="mt-4">
+                <h3 class="font-bold">Live Status:</h3>
+                <div id="riderStatus" class="text-lg font-bold text-gray-400">Waiting...</div>
+                <div id="riderMap" class="mt-2 text-sm text-gray-500 italic">Map simulation: No driver visible</div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-lg border-t-4 border-green-500">
+            <h2 class="text-2xl font-bold text-green-600 mb-4">🚗 Driver Panel</h2>
+            
+            <div class="mb-4 p-4 bg-green-50 rounded">
+                <p class="text-sm font-bold text-gray-500">Step 1: Identity</p>
+                <button onclick="registerDriver()" class="bg-green-600 text-white px-3 py-1 rounded text-sm mt-2 hover:bg-green-700">1. Auto-Register (Nearby)</button>
+                <div class="mt-2 text-xs">ID: <span id="driverId" class="font-mono font-bold">Not Logged In</span></div>
+            </div>
+
+            <div id="incomingRequestBox" class="hidden mb-4 p-4 bg-yellow-100 border-2 border-yellow-400 rounded animate-pulse">
+                <p class="font-bold text-yellow-800">🔔 NEW RIDE REQUEST!</p>
+                <p class="text-sm">Fare: ₹<span id="reqFare">0</span></p>
+                <button onclick="acceptRide()" class="w-full bg-black text-white py-2 rounded mt-2">ACCEPT RIDE</button>
+            </div>
+
+            <div class="mb-4 p-4 bg-gray-50 rounded border opacity-50" id="driverControls">
+                <p class="text-sm font-bold text-gray-500">Step 3: Simulation</p>
+                <button onclick="simulateMove()" class="w-full bg-gray-600 text-white py-2 rounded mt-2">Move Car (Send Location)</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-8">
+        <p class="font-bold mb-2">System Logs (Socket Events):</p>
+        <div id="console" class="console">Logs will appear here...<br></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5000/api';
+        const socket = io('http://localhost:5000');
+        
+        let riderData = null;
+        let driverData = null;
+        let currentRideId = null;
+
+        // Logging Helper
+        function log(msg, type="info") {
+            const consoleDiv = document.getElementById('console');
+            const color = type === 'error' ? 'red' : '#10b981';
+            consoleDiv.innerHTML += `<span style="color:${color}">> ${msg}</span><br>`;
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+        }
+
+        // --- RIDER FUNCTIONS ---
+        async function registerRider() {
+            try {
+                // Randomize name to avoid duplicate email errors during testing
+                const rand = Math.floor(Math.random() * 1000);
+                const res = await axios.post(`${API_URL}/auth/register`, {
+                    name: `Rider${rand}`, email: `rider${rand}@test.com`, password: "123", role: "rider",
+                    lat: 28.6100, lng: 77.2000 
+                });
+                riderData = res.data;
+                document.getElementById('riderId').innerText = riderData._id;
+                socket.emit('join_room', riderData._id); // Socket Join
+                log(`Rider Registered & Joined Room: ${riderData._id}`);
+            } catch (err) { log("Rider Register Error: " + err.message, "error"); }
+        }
+
+        async function requestRide() {
+            if (!riderData) return alert("Register Rider first!");
+            document.getElementById('riderStatus').innerText = "Searching for drivers...";
+            document.getElementById('riderStatus').className = "text-lg font-bold text-yellow-500";
+            
+            try {
+                const res = await axios.post(`${API_URL}/ride/request`, {
+                    riderId: riderData._id,
+                    pickup: [77.2000, 28.6100], // LNG, LAT (GeoJSON order)
+                    drop: [77.2500, 28.6500]
+                });
+                log(`Request Sent. Drivers found: ${res.data.driversFound}`);
+            } catch (err) { log("Request Error: " + err.message, "error"); }
+        }
+
+        // --- DRIVER FUNCTIONS ---
+        async function registerDriver() {
+            try {
+                const rand = Math.floor(Math.random() * 1000);
+                // Register VERY CLOSE to rider (Lat: 28.6100)
+                const res = await axios.post(`${API_URL}/auth/register`, {
+                    name: `Driver${rand}`, email: `driver${rand}@test.com`, password: "123", role: "driver",
+                    lat: 28.6105, lng: 77.2005 // 50 meters away
+                });
+                driverData = res.data;
+                document.getElementById('driverId').innerText = driverData._id;
+                
+                // Set Driver Online
+                await axios.put(`${API_URL}/driver/status`, { driverId: driverData._id, status: true });
+                
+                socket.emit('join_room', driverData._id); // Socket Join
+                document.getElementById('driverControls').classList.remove('opacity-50');
+                log(`Driver Registered, Online & Joined Room: ${driverData._id}`);
+            } catch (err) { log("Driver Register Error: " + err.message, "error"); }
+        }
+
+        async function acceptRide() {
+            if (!currentRideId) return;
+            try {
+                await axios.put(`${API_URL}/ride/accept`, {
+                    rideId: currentRideId,
+                    driverId: driverData._id
+                });
+                document.getElementById('incomingRequestBox').classList.add('hidden');
+                log("Ride Accepted! Notification sent to Rider.");
+            } catch (err) { log("Accept Error: " + err.message, "error"); }
+        }
+
+        function simulateMove() {
+            if (!driverData || !riderData) return alert("Need active ride");
+            log("Simulating movement...");
+            // Move driver slightly
+            const newLat = 28.6100 + (Math.random() * 0.001);
+            const newLng = 77.2000 + (Math.random() * 0.001);
+            
+            socket.emit('driver_location_update', {
+                riderId: riderData._id, // Send to specific rider
+                lat: newLat,
+                lng: newLng
+            });
+        }
+
+        // --- SOCKET LISTENERS ---
+        
+        // 1. Driver receives request
+        socket.on('new_ride_request', (data) => {
+            if (driverData) { // Only show if I am the driver
+                log("🔔 Driver received request!");
+                currentRideId = data.rideId;
+                document.getElementById('reqFare').innerText = data.fare;
+                document.getElementById('incomingRequestBox').classList.remove('hidden');
+            }
+        });
+
+        // 2. Rider receives acceptance
+        socket.on('ride_accepted', (data) => {
+            log(`✅ Driver Found! Driver ID: ${data.driverId}`);
+            document.getElementById('riderStatus').innerText = "Driver is coming!";
+            document.getElementById('riderStatus').className = "text-lg font-bold text-green-600";
+        });
+
+        // 3. Rider tracks driver
+        socket.on('driver_moved', (data) => {
+            document.getElementById('riderMap').innerHTML = `📍 Driver Location: [${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}]`;
+            document.getElementById('riderMap').className = "mt-2 text-sm text-green-600 font-bold border p-2 border-green-200 bg-green-50";
+            log(`Tracking Update: Driver moved to ${data.lat.toFixed(4)}`);
+        });
+
+    </script>
+</body>
+</html>
