@@ -1,3 +1,13 @@
+const express = require('express');
+const http = require('http');
+const connectDB = require('./config/db');
+const cors = require('cors');
+require('dotenv').config();
+const authRoutes = require('./routes/authRoutes');
+const rideRoutes = require('./routes/rideRoutes');
+
+app.use('/api/auth', authRoutes);
+app.use('/api/ride', rideRoutes);
 
     // 3.5 Driver Declines Ride (NEW CODE)
     socket.on('decline_ride', async (data) => {
