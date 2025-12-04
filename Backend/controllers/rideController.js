@@ -1,43 +1,88 @@
-const Ride = require('../models/ride.js');
+const Ride = require('../models/Ride');
 const User = require('../models/User');
-// IMPORT ANANYA'S SOCKET GETTER
-const { getIO } = require('../socket/socketHandler'); 
+const { getIO } = require('../socket/socketHandler'); // Connecting Ananya's logic
 
-// @desc    Driver accepts a ride
-// @route   PUT /api/ride/accept
+// --- 1. REQUEST RIDE (The Matching Algorithm) ---
+exports.requestRide = async (req, res) => {
+    const { riderId, pickup, drop } = req.body; // pickup = [lng, lat]
+
+    try {
+        // A. Calculate Fare (Math)
+        const fare = Math.round(50 + (Math.random() * 100)); // Mock logic for speed
+
+        // B. Create Ride in DB
+        const newRide = await Ride.create({
+            rider: riderId,
+            pickup: { type: 'Point', coordinates: pickup },
+            drop: { type: 'Point', coordinates: drop },
+            fare,
+            status: 'SEARCHING'
+        });
+
+        // C. FIND NEAREST DRIVERS (MongoDB Geospatial Query)
+        const drivers = await User.find({
+            role: 'driver',
+            isAvailable: true,
+            location: {
+                $near: {
+                    $geometry: { type: "Point", coordinates: pickup },
+                    $maxDistance: 5000 // 5km Radius
+                }
+            }
+        });
+
+        // D. ALERT DRIVERS (Real-Time)
+        if (drivers.length > 0) {
+            const io = getIO();
+            drivers.forEach(driver => {
+                io.to(driver._id.toString()).emit('new_ride_request', {
+                    rideId: newRide._id,
+                    fare,
+                    pickup, // Send coords so driver knows where to go
+                    message: "New Passenger Nearby!"
+                });
+            });
+        }
+
+        res.json({ success: true, rideId: newRide._id, driversFound: drivers.length });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// --- 2. ACCEPT RIDE ---
 exports.acceptRide = async (req, res) => {
     const { rideId, driverId } = req.body;
 
     try {
         const ride = await Ride.findById(rideId);
-        if (!ride) return res.status(404).json({ message: 'Ride not found' });
-        if (ride.status !== 'SEARCHING') return res.status(400).json({ message: 'Ride already taken' });
+        if (!ride || ride.status !== 'SEARCHING') {
+            return res.status(400).json({ message: 'Ride already taken' });
+        }
 
-        // 1. Update Ride Status
+        // Assign Driver
         ride.driver = driverId;
         ride.status = 'ACCEPTED';
         await ride.save();
 
-        // 2. Mark Driver as Busy (Unavailable)
+        // Mark Driver Busy
         await User.findByIdAndUpdate(driverId, { isAvailable: false });
 
-        // 3. NOTIFY RIDER via SOCKET (The Integration!)
-        const io = getIO(); 
-        // We assume Rider joined a room with their own ID
+        // Notify Rider
+        const io = getIO();
         io.to(ride.rider.toString()).emit('ride_accepted', {
             rideId: ride._id,
-            driverId: driverId,
-            message: "A driver is on the way!"
+            driverId,
+            message: "Driver is coming!"
         });
 
-        res.json(ride);
+        res.json({ success: true, ride });
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ error: error.message });
     }
 };
 
-// @desc    Complete the trip
-// @route   PUT /api/ride/complete
+// --- 3. COMPLETE RIDE ---
 exports.completeRide = async (req, res) => {
     const { rideId } = req.body;
     try {
@@ -48,6 +93,6 @@ exports.completeRide = async (req, res) => {
 
         res.json(ride);
     } catch (error) {
-        res.status(500).json({ message: error.message });
+        res.status(500).json({ error: error.message });
     }
 };
