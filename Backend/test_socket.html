@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Socket Test Dashboard</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: monospace; display: flex; gap: 20px; }
+        .box { border: 1px solid #333; padding: 20px; width: 45%; }
+        .log { background: #eee; height: 200px; overflow-y: scroll; padding: 5px; border: 1px solid #999;}
+    </style>
+</head>
+<body>
+
+    <div class="box">
+        <h3>RIDER (User ID: rider_123)</h3>
+        <button onclick="joinRider()">1. Join as Rider</button>
+        <div id="riderLog" class="log"></div>
+    </div>
+
+    <div class="box">
+        <h3>DRIVER (User ID: driver_456)</h3>
+        <button onclick="joinDriver()">1. Join as Driver</button>
+        <button onclick="moveDriver()">2. Simulate Movement</button>
+        <div id="driverLog" class="log"></div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:5000'); 
+        function joinRider() {
+            socket.emit('join_user_room', 'rider_123');
+            log('riderLog', 'Joined room: rider_123');
+        }
+
+        socket.on('driver_moved', (data) => {
+            log('riderLog', Driver Moved: Lat ${data.lat}, Lng ${data.lng});
+        });
+
+        socket.on('ride_accepted', (data) => {
+            log('riderLog', RIDE ACCEPTED by Driver: ${data.driverId});
+            alert("RIDE ACCEPTED! Check Log.");
+        });
+
+        function joinDriver() {
+            socket.emit('join_user_room', 'driver_456');
+            log('driverLog', 'Joined room: driver_456');
+        }
+
+        function moveDriver() {
+
+            const lat = 28.7041 + (Math.random() * 0.001);
+            const lng = 77.1025 + (Math.random() * 0.001);
+            
+            socket.emit('update_driver_location', {
+                driverId: 'driver_456',
+                riderId: 'rider_123', 
+                lat: lat,
+                lng: lng
+            });
+            log('driverLog', Sent Location: ${lat.toFixed(4)}, ${lng.toFixed(4)});
+        }
+
+        function log(id, msg) {
+            const el = document.getElementById(id);
+            el.innerHTML += <div>${new Date().toLocaleTimeString()} - ${msg}</div>;
+            el.scrollTop = el.scrollHeight;
+        }
+    </script>
+</body>
+</html>
