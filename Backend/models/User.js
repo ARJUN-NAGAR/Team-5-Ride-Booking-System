@@ -3,14 +3,13 @@ const mongoose = require('mongoose');
 const UserSchema = new mongoose.Schema({
     name: String,
     role: { type: String, enum: ['rider', 'driver'], required: true },
-    isAvailable: { type: Boolean, default: false }, // For drivers
-    // GEOSPATIAL DATA
+    isAvailable: { type: Boolean, default: false },
     location: {
         type: { type: String, default: 'Point' },
-        coordinates: { type: [Number], default: [0, 0] } // [Longitude, Latitude]
+        coordinates: { type: [Number], default: [0, 0] } 
     }
 });
 
-UserSchema.index({ location: '2dsphere' }); // IMPORTANT for Arjun's logic
+UserSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('User', UserSchema);
