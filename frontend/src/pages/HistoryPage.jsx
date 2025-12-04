@@ -12,7 +12,12 @@ const HistoryPage = () => {
         
         const fetchHistory = async () => {
             try {
-                const { data } = await axios.get(http://localhost:5000/api/rides/history/${user.role}/${user._id});
+                const { data } = await axios.get(`http://localhost:5000/api/ride/history`, {
+                    params: {
+                        userId: user._id,
+                        role: user.role
+                    }
+                });
                 setRides(data);
             } catch (error) {
                 console.error(error);
@@ -20,6 +25,15 @@ const HistoryPage = () => {
         };
         fetchHistory();
     }, []);
+
+    const getStatusColor = (status) => {
+        switch(status) {
+            case 'COMPLETED': return 'bg-green-100 text-green-800';
+            case 'ACCEPTED': return 'bg-blue-100 text-blue-800';
+            case 'STARTED': return 'bg-yellow-100 text-yellow-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
@@ -32,21 +46,33 @@ const HistoryPage = () => {
                 <div className="divide-y divide-gray-200">
                     {rides.map((ride) => (
                         <div key={ride._id} className="p-4 hover:bg-gray-50">
-                            <div className="flex justify-between mb-1">
-                                <span className={px-2 py-0.5 rounded text-xs font-bold uppercase ${ride.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}}>
+                            <div className="flex justify-between mb-2">
+                                <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${getStatusColor(ride.status)}`}>
                                     {ride.status}
                                 </span>
-                                <span className="font-bold">${ride.fare}</span>
+                                <span className="font-bold text-lg">₹{ride.fare}</span>
                             </div>
-                            <p className="text-sm text-gray-800 truncate"><strong>From:</strong> {ride.pickupLocation.address}</p>
-                            <p className="text-sm text-gray-800 truncate"><strong>To:</strong> {ride.dropoffLocation.address}</p>
-                            <div className="mt-2 text-xs text-gray-500 flex justify-between">
-                                <span>{new Date(ride.createdAt).toLocaleDateString()}</span>
-                                <span>{ride.rating ? ⭐ ${ride.rating} : 'No Rating'}</span>
+                            
+                            {user.role === 'rider' && ride.driver && (
+                                <p className="text-sm text-gray-600 mb-1">
+                                    <strong>Driver:</strong> {ride.driver.name}
+                                </p>
+                            )}
+                            
+                            {user.role === 'driver' && ride.rider && (
+                                <p className="text-sm text-gray-600 mb-1">
+                                    <strong>Rider:</strong> {ride.rider.name}
+                                </p>
+                            )}
+                            
+                            <div className="mt-2 text-xs text-gray-500">
+                                <span>{new Date(ride.createdAt).toLocaleDateString()} at {new Date(ride.createdAt).toLocaleTimeString()}</span>
                             </div>
                         </div>
                     ))}
-                    {rides.length === 0 && <p className="p-4 text-center text-gray-500">No rides yet.</p>}
+                    {rides.length === 0 && (
+                        <p className="p-8 text-center text-gray-500">No rides yet.</p>
+                    )}
                 </div>
             </div>
         </div>

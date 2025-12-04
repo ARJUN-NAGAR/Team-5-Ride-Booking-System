@@ -4,26 +4,18 @@ const UserSchema = new mongoose.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['rider', 'driver'], required: true },
-    isAvailable: { type: Boolean, default: false }, // Critical for "Online/Offline"
+    role: { type: String, enum: ['rider', 'driver', 'admin'], required: true },
+    isAvailable: { type: Boolean, default: false },
+    isVerified: { type: Boolean, default: false },
     
-    // 📍 GEOSPATIAL FIELD (This is what makes the "Uber" logic work)
+    // Geospatial field for location-based matching
     location: {
         type: { type: String, default: 'Point' },
         coordinates: { type: [Number], default: [0, 0] } // [Longitude, Latitude]
     }
-});
+}, { timestamps: true });
 
-// Create Index for Fast Geospatial Searching
-    name: String,
-    role: { type: String, enum: ['rider', 'driver'], required: true },
-    isAvailable: { type: Boolean, default: false },
-    location: {
-        type: { type: String, default: 'Point' },
-        coordinates: { type: [Number], default: [0, 0] } 
-    }
-});
-
+// Create 2dsphere index for geospatial queries
 UserSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('User', UserSchema);

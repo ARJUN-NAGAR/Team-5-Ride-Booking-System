@@ -1,38 +1,81 @@
 const socketIo = require('socket.io');
+const Ride = require('../models/ride');
 
-let io;
+let io; 
 
 const initSocket = (server) => {
     io = socketIo(server, {
-        cors: { origin: "*" } // Allow Frontend to connect
+        cors: { origin: "*" } 
     });
 
     io.on('connection', (socket) => {
-        console.log('🔌 Client Connected:', socket.id);
+        console.log('✅ New socket connection:', socket.id);
 
-        // 1. User joins their own personal room (Room Name = UserID)
+        // Join user-specific room
+        socket.on('join_user_room', (userId) => {
+            socket.join(userId);
+            console.log(`User ${userId} joined their personal room.`);
+        });
+
+        // Alternative: join_room (for compatibility)
         socket.on('join_room', (userId) => {
-            if (userId) {
-                socket.join(userId);
-                console.log(`👤 User joined room: ${userId}`);
+            socket.join(userId);
+            console.log(`User ${userId} joined room.`);
+        });
+
+        // Driver location updates
+        socket.on('update_driver_location', async (data) => {
+            const { driverId, riderId, lat, lng } = data;
+            console.log(`Driver ${driverId} location update:`, lat, lng);
+            
+            if (riderId) {
+                io.to(riderId).emit('driver_moved', { lat, lng });
+                io.to(riderId).emit('driver_live_location', { lat, lng });
             }
         });
 
-        // 2. Driver sends live location -> Relay to Rider
+        // Driver location update alternative name
         socket.on('driver_location_update', (data) => {
             const { riderId, lat, lng } = data;
             if (riderId) {
                 io.to(riderId).emit('driver_moved', { lat, lng });
+                io.to(riderId).emit('driver_live_location', { lat, lng });
             }
         });
 
-        socket.on('disconnect', () => console.log('❌ Disconnected'));
+        // Trip status updates
+        socket.on('trip_status_update', (data) => {
+            const { riderId, status } = data;
+            io.to(riderId).emit('trip_status_update', { status });
+        });
+
+        // Driver declines ride
+        socket.on('decline_ride', async (data) => {
+            const { rideId, driverId } = data;
+            console.log(`Ride ${rideId} declined by driver ${driverId}`);
+
+            try {
+                const ride = await Ride.findById(rideId);
+                if (ride && ride.status === 'SEARCHING') {
+                    io.to(ride.rider.toString()).emit('ride_declined', {
+                        message: "Driver declined. Searching for another driver..."
+                    });
+                }
+            } catch (error) {
+                console.error('Decline ride error:', error);
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log('❌ Socket disconnected:', socket.id);
+        });
     });
 };
 
-// Export this function so Arjun's Controller can use it
 const getIO = () => {
-    if (!io) throw new Error("Socket not initialized!");
+    if (!io) {
+        throw new Error("Socket.io not initialized!");
+    }
     return io;
 };
 

@@ -1,14 +1,14 @@
-const Ride = require('../models/Ride');
+const Ride = require('../models/ride');
 const User = require('../models/User');
-const { getIO } = require('../socket/socketHandler'); // Connecting Ananya's logic
+const { getIO } = require('../socket/socketHandler');
 
 // --- 1. REQUEST RIDE (The Matching Algorithm) ---
 exports.requestRide = async (req, res) => {
-    const { riderId, pickup, drop } = req.body; // pickup = [lng, lat]
+    const { riderId, pickup, drop } = req.body;
 
     try {
-        // A. Calculate Fare (Math)
-        const fare = Math.round(50 + (Math.random() * 100)); // Mock logic for speed
+        // A. Calculate Fare
+        const fare = Math.round(50 + (Math.random() * 100));
 
         // B. Create Ride in DB
         const newRide = await Ride.create({
@@ -31,21 +31,31 @@ exports.requestRide = async (req, res) => {
             }
         });
 
+        console.log(`Found ${drivers.length} drivers near pickup location`);
+
         // D. ALERT DRIVERS (Real-Time)
         if (drivers.length > 0) {
             const io = getIO();
             drivers.forEach(driver => {
+                console.log(`Sending request to driver: ${driver._id}`);
                 io.to(driver._id.toString()).emit('new_ride_request', {
                     rideId: newRide._id,
                     fare,
-                    pickup, // Send coords so driver knows where to go
+                    pickup,
                     message: "New Passenger Nearby!"
                 });
             });
+            res.json({ success: true, rideId: newRide._id, driversFound: drivers.length });
+        } else {
+            // No drivers found
+            const io = getIO();
+            io.to(riderId).emit('no_drivers_found', {
+                message: "No drivers available nearby. Please try again."
+            });
+            res.json({ success: false, rideId: newRide._id, driversFound: 0 });
         }
-
-        res.json({ success: true, rideId: newRide._id, driversFound: drivers.length });
     } catch (error) {
+        console.error('Request ride error:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -57,7 +67,7 @@ exports.acceptRide = async (req, res) => {
     try {
         const ride = await Ride.findById(rideId);
         if (!ride || ride.status !== 'SEARCHING') {
-            return res.status(400).json({ message: 'Ride already taken' });
+            return res.status(400).json({ message: 'Ride already taken or cancelled' });
         }
 
         // Assign Driver
@@ -68,16 +78,25 @@ exports.acceptRide = async (req, res) => {
         // Mark Driver Busy
         await User.findByIdAndUpdate(driverId, { isAvailable: false });
 
+        // Get driver info
+        const driver = await User.findById(driverId);
+
         // Notify Rider
         const io = getIO();
         io.to(ride.rider.toString()).emit('ride_accepted', {
             rideId: ride._id,
             driverId,
+            driver: {
+                name: driver.name,
+                _id: driver._id
+            },
             message: "Driver is coming!"
         });
 
+        console.log(`Ride ${rideId} accepted by driver ${driverId}`);
         res.json({ success: true, ride });
     } catch (error) {
+        console.error('Accept ride error:', error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -86,13 +105,21 @@ exports.acceptRide = async (req, res) => {
 exports.completeRide = async (req, res) => {
     const { rideId } = req.body;
     try {
-        const ride = await Ride.findByIdAndUpdate(rideId, { status: 'COMPLETED' }, { new: true });
+        const ride = await Ride.findByIdAndUpdate(
+            rideId, 
+            { status: 'COMPLETED' }, 
+            { new: true }
+        );
         
-        // Make driver available again
-        await User.findByIdAndUpdate(ride.driver, { isAvailable: true });
+        if (ride && ride.driver) {
+            // Make driver available again
+            await User.findByIdAndUpdate(ride.driver, { isAvailable: true });
+        }
 
+        console.log(`Ride ${rideId} completed`);
         res.json(ride);
     } catch (error) {
+        console.error('Complete ride error:', error);
         res.status(500).json({ error: error.message });
     }
 };
